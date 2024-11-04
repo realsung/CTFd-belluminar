@@ -1,5 +1,7 @@
 from flask import Blueprint
 
+from CTFd.utils.user import get_current_team
+
 from CTFd.models import (
     ChallengeFiles,
     Challenges,
@@ -8,12 +10,16 @@ from CTFd.models import (
     Hints,
     Solves,
     Tags,
+    Awards,
     db,
 )
+
 from CTFd.plugins import register_plugin_assets_directory
 from CTFd.plugins.flags import FlagException, get_flag_class
 from CTFd.utils.uploads import delete_file
 from CTFd.utils.user import get_ip
+from sqlalchemy import func
+import datetime
 
 
 class BaseChallenge(object):
@@ -48,6 +54,7 @@ class BaseChallenge(object):
         :param challenge:
         :return: Challenge object, data dictionary to be returned to the user
         """
+
         data = {
             "id": challenge.id,
             "name": challenge.name,
@@ -67,6 +74,11 @@ class BaseChallenge(object):
                 "scripts": cls.scripts,
             },
         }
+    
+        team = get_current_team()
+        if team and team.id == challenge.id:
+            data["state"] = "hidden"
+
         return data
 
     @classmethod
@@ -134,22 +146,99 @@ class BaseChallenge(object):
         """
         This method is used to insert Solves into the database in order to mark a challenge as solved.
 
+        :param user: The User object from the database
         :param team: The Team object from the database
-        :param chal: The Challenge object from the database
+        :param challenge: The Challenge object from the database
         :param request: The request the user submitted
         :return:
         """
         data = request.form or request.get_json()
         submission = data["submission"].strip()
-        solve = Solves(
-            user_id=user.id,
-            team_id=team.id if team else None,
-            challenge_id=challenge.id,
-            ip=get_ip(req=request),
-            provided=submission,
+
+        # After solving, implement the custom logic
+        if team:  # Ensure that team is not None
+            # Check if the team is solving their own challenge
+            if team.id == challenge.id:
+                # Create an Award with negative value to negate the points
+                # award = Awards(
+                #     user_id=user.id,
+                #     team_id=team.id,
+                #     name='No points for solving own challenge',
+                #     value=-challenge.value,
+                #     description='No points awarded for solving your own challenge',
+                #     category=challenge.category,
+                # )
+                fail = Fails(
+                    user_id=user.id,
+                    team_id=team.id if team else None,
+                    challenge_id=challenge.id,
+                    ip=get_ip(request),
+                    provided=submission,
+                )
+                db.session.add(fail)
+                db.session.commit()
+            else:
+                solve = Solves(
+                    user_id=user.id,
+                    team_id=team.id if team else None,
+                    challenge_id=challenge.id,
+                    ip=get_ip(req=request),
+                    provided=submission,
+                )
+                db.session.add(solve)
+                db.session.commit()
+
+        # Now, award points to the author team if thresholds are met
+        # Get the number of unique teams that have solved the challenge
+        team_solve_count = (
+            db.session.query(func.count(func.distinct(Solves.team_id)))
+            .filter_by(challenge_id=challenge.id)
+            .scalar()
         )
-        db.session.add(solve)
-        db.session.commit()
+
+        # Define the award thresholds
+        award_thresholds = [
+            (0, 0),
+            (1, 200),
+            (2, 500),
+            (3, 800),
+            (4, 1200),
+            (5, 1600),
+            (6, 2000),
+            (7, 1600),
+            (8, 1200),
+            (9, 800),
+            (10, 500),
+            (11, 200),
+        ]
+
+        # Check if the current team_solve_count matches any threshold
+        for threshold, points in award_thresholds:
+            if team_solve_count == threshold:
+                # Check if the author team has already received an Award for this threshold
+                award_description = f'Bonus'
+                existing_award = Awards.query.filter_by(
+                    team_id=challenge.id,
+                    description=award_description,
+                ).first()
+                if not existing_award:
+                    # Award the points to the author team
+                    award = Awards(
+                        user_id=None,
+                        team_id=challenge.id,
+                        type="standard",
+                        name='Bonus 🩸',
+                        description=award_description,
+                        icon="crown",
+                        value=points,
+                        date=datetime.datetime.utcnow(),
+                        category=challenge.category,
+                        requirements={"challenge_id": challenge.id},
+                    )
+                    db.session.add(award)
+                    db.session.commit()
+                break  # Exit the loop since we've handled the current threshold
+
 
     @classmethod
     def fail(cls, user, team, challenge, request):
