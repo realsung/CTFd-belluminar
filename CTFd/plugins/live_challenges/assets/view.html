@@ -1,0 +1,78 @@
+{% extends "challenge.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h3 class="challenge-name">{{ challenge.name }}</h3>
+        <h4 class="challenge-value">{{ challenge.value }}</h4>
+        <div class="challenge-tags">
+            {% for tag in tags %}
+                <span class='badge badge-info challenge-tag'>{{ tag }}</span>
+            {% endfor %}
+        </div>
+        <div class="challenge-description">
+            {{ challenge.description | safe }}
+        </div>
+        <div class="challenge-files">
+            {% for file in files %}
+                <div class='row challenge-files-row'>
+                    <div class='col-md-12 challenge-file'>
+                        <a href='{{ file }}'>{{ file.split('/').pop() }}</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <div class="row submit-row">
+            <div class="col-md-12">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="challenge-input" placeholder="Flag">
+                    <div class="input-group-append">
+                        <button class="btn btn-outline-secondary" type="button" id="challenge-submit">Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row notification-row">
+            <div class="col-md-12">
+                <div id="result-notification"></div>
+            </div>
+        </div>
+        <input id="challenge-id" type="hidden" value="{{ challenge.id }}">
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    var challenge;
+    var submission_count = 0;
+    var update_time = {{ update_time }};
+
+    function submissionError(error) {
+        var result = $("#result-notification");
+        result.removeClass();
+        result.addClass("alert alert-danger alert-dismissable text-center");
+        result.slideDown();
+
+        if (error.responseJSON && error.responseJSON.message) {
+            result.text(error.responseJSON.message);
+        } else {
+            result.text(error);
+        }
+    }
+
+    $("#challenge-submit").click(function(e) {
+        e.preventDefault();
+        $("#challenge-submit").addClass("disabled-button");
+        $("#challenge-submit").prop("disabled", true);
+
+        CTFd._internal.challenge.submit().then(renderSubmissionResponse);
+    });
+
+    $("#challenge-input").keyup(function(event) {
+        if (event.keyCode == 13) {
+            $("#challenge-submit").click();
+        }
+    });
+</script>
+{% endblock %}
