@@ -1,0 +1,23 @@
+{% extends "admin/challenges/update.html" %}
+
+{% block value %}
+<div class="form-group">
+	<label for="value">Challenge Value<br>
+		<small class="form-text text-muted">
+			This is how many points the challenge is worth.
+		</small>
+	</label>
+	<input type="number" class="form-control" name="value" value="{{ challenge.value }}" required>
+</div>
+
+<div class="form-group">
+	<label for="authorized_users">Authorized Users<br>
+		<small class="form-text text-muted">
+			Enter usernames separated by commas. Only these users will be able to see and solve this challenge.
+		</small>
+	</label>
+	<input type="text" class="form-control" name="authorized_users" id="authorized_users" 
+		placeholder="user1, user2" 
+		value="{{ ','.join(authorized_users) if authorized_users else '' }}">
+</div>
+{% endblock %}
